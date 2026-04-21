@@ -111,7 +111,7 @@
   <section id="tab-home" class="tab active">
     <div class="card">
       <h1>단어 수집함</h1>
-      <p>복사한 영어 문장을 아래 칸에 <strong>붙여넣는 즉시</strong> 단어를 <strong>Inbox</strong> 폴더에 자동 저장합니다.</p>
+      <p>복사한 영어 문장이나 구를 아래 칸에 <strong>붙여넣는 즉시</strong> 텍스트 전체를 카드 <strong>1장</strong>으로 <strong>Inbox</strong> 폴더에 자동 저장합니다.</p>
       <div class="stats">
         <div class="stat"><div>오늘 Inbox 추가</div><div class="num" id="todayAdded">0</div></div>
         <div class="stat"><div>전체 단어 수</div><div class="num" id="totalWords">0</div></div>
@@ -122,9 +122,9 @@
 
     <div class="card">
       <h2>붙여넣기 수집</h2>
-      <textarea id="pasteBox" placeholder="여기에 영어 문장이나 단어들을 붙여넣으세요. 붙여넣는 즉시 Inbox에 저장됩니다."></textarea>
+      <textarea id="pasteBox" placeholder="여기에 영어 문장, 구, 단어를 붙여넣으세요. 붙여넣은 전체가 카드 1장으로 Inbox에 저장됩니다."></textarea>
       <div class="toolbar-row">
-        <button id="readClipboardBtn" class="icon-text-btn" aria-label="클립보드 읽기">📋<span>읽기</span></button>
+        <button id="readClipboardBtn" class="icon-text-btn" aria-label="붙여넣기 준비">📋<span>붙여넣기</span></button>
         <button id="clearPasteBtn" class="icon-text-btn" aria-label="입력칸 비우기">✕<span>비우기</span></button>
       </div>
       <p id="saveMessage" class="small"></p>
@@ -468,6 +468,9 @@
     setListStatus('전체 데이터를 JSON으로 백업했어요.');
   }
   function normalizeWord(word) { return word.trim().toLowerCase(); }
+  function normalizeCardText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
   function getMeaning(word) { return starterDict[normalizeWord(word)] || '뜻 입력'; }
   function todayKey() {
     const d = new Date();
@@ -521,13 +524,35 @@
     folder.push(item);
     return { added:true, item };
   }
+  function addTextCardToFolder(folderName, text, meaning='') {
+    const folder = state.folders[folderName];
+    const rawText = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!rawText) return { added:false, item:null };
+    const key = normalizeCardText(rawText);
+    const existing = folder.find(item => normalizeCardText(item.word) === key);
+    if (existing) {
+      if ((!existing.meaning || existing.meaning === '뜻 입력') && meaning) existing.meaning = meaning;
+      existing.updatedAt = Date.now();
+      return { added:false, item:existing };
+    }
+    const item = {
+      id: makeId(),
+      word: rawText,
+      meaning: meaning || '뜻 입력',
+      wrongCount: 0,
+      createdDate: todayKey(),
+      updatedAt: Date.now(),
+      studyCount: 0,
+      nextReviewDate: todayKey()
+    };
+    folder.push(item);
+    return { added:true, item };
+  }
   function savePastedTextToInbox(text) {
-    const words = extractWords(text);
-    let added = 0;
-    words.forEach(word => { if (addWordToFolder('Inbox', word, getMeaning(word)).added) added += 1; });
+    const result = addTextCardToFolder('Inbox', text);
     saveState();
     renderAll();
-    return { added, total: words.length };
+    return { added: result.added ? 1 : 0, total: result.added ? 1 : 0 };
   }
   function renderStats() {
     const allItems = Object.values(state.folders).flat();
@@ -893,16 +918,11 @@
     e.preventDefault();
     const result = savePastedTextToInbox(text);
     els.pasteBox.value = '';
-    setMessage(`Inbox에 ${result.added}개 단어를 저장했어요.`, 'success');
+    setMessage(result.added ? '붙여넣은 전체 텍스트를 카드 1장으로 Inbox에 저장했어요.' : '붙여넣을 텍스트가 없어요.', 'success');
   });
-  els.readClipboardBtn.addEventListener('click', async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      const result = savePastedTextToInbox(text);
-      setMessage(`클립보드에서 ${result.added}개 단어를 Inbox에 저장했어요.`, 'success');
-    } catch (e) {
-      setMessage('클립보드를 읽지 못했어요. 직접 붙여넣기를 사용해주세요.');
-    }
+  els.readClipboardBtn.addEventListener('click', () => {
+    els.pasteBox.focus();
+    setMessage('입력칸을 길게 눌러 붙여넣으면 전체 문장이나 구가 카드 1장으로 저장돼요.', 'success');
   });
   els.clearPasteBtn.addEventListener('click', () => {
     els.pasteBox.value = '';
